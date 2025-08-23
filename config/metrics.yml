@@ -1,0 +1,52 @@
+- id: broadband_adoption_households_share
+  title: "Households with a broadband Internet subscription (%)"
+  responsibility: "Infrastructure"
+  unit: "percent"
+  frequency: "annual"
+  years:
+    start: 2013
+    end: 2023
+  source:
+    system: "census_acs"
+    table: "B28002"
+    variables:
+      total_households: "B28002_001E"
+      broadband_any_type: "B28002_004E"
+    geography: "state:*"
+    dataset: "acs/acs1"
+  denominator: "total_households"
+  numerator: "broadband_any_type"
+  normalize: "percent"
+  comparator:
+    kind: "simple_mean_other_states"
+    exclude: ["HI", "DC"]
+  annotations:
+    - "ACS questionnaire/response options changed in 2016; use caution comparing 2013–2015 with 2016+."
+    - "ACS did not publish standard 1-year estimates for 2020 due to COVID-19; we skip 2020 (or use experimental with footnote)."
+
+- id: electricity_renewables_generation_share
+  title: "Renewables’ share of electricity generation (% of MWh)"
+  responsibility: "Environment"
+  unit: "percent"
+  frequency: "annual"
+  years:
+    start: 2014
+    end: 2023
+  source:
+    system: "eia"
+    endpoint: "electricity/state-generation"
+    strategy: "renewables_div_total"
+    renewable_sources: ["hydro","solar","wind","geothermal","biomass"]
+    exclude_from_numerator: ["pumped_storage"]
+    facets:
+      sector: ["all"]
+  denominator: "total_net_generation_mwh"
+  numerator: "renewable_net_generation_mwh"
+  normalize: "percent"
+  comparator:
+    kind: "simple_mean_other_states"
+    exclude: ["HI", "DC"]
+  annotations:
+    - "Small-scale (behind-the-meter) solar included in EIA state estimates beginning in 2014."
+    - "Exclude pumped-storage hydro from numerator to avoid counting storage as generation."
+
