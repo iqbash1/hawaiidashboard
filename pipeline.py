@@ -1,5 +1,7 @@
 import yaml
 import pandas as pd
+from dotenv import load_dotenv
+load_dotenv()
 from pathlib import Path
 
 from connectors.census_acs import fetch_broadband_adoption_by_state
