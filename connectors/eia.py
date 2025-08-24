@@ -1,86 +1,131 @@
 import os
 import requests
 import pandas as pd
-from typing import List
+from typing import List, Tuple
 
-EIA_API_KEY = os.getenv("EIA_API_KEY", "")
-BASE = "https://api.eia.gov/v2"
+# Reads your key from .env via pipeline.py -> load_dotenv()
+EIA_API_KEY = os.getenv("FFsf7F17guAaB6ClmCeckdIippnW8ElrDrLEb236", "")
+# EIA API v2 route for electric power operations (annual/monthly)
+BASE = "https://api.eia.gov/v2/electricity/electric-power-operational-data"
 
-def _eia_get(endpoint: str, params: dict) -> dict:
-    params = {**params, "api_key": EIA_API_KEY}
-    url = f"{BASE}/{endpoint}/data/"
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
-    return r.json()
+# State code -> full name
+STATE_NAMES = {
+    'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California','CO':'Colorado',
+    'CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia','HI':'Hawaii','ID':'Idaho',
+    'IL':'Illinois','IN':'Indiana','IA':'Iowa','KS':'Kansas','KY':'Kentucky','LA':'Louisiana',
+    'ME':'Maine','MD':'Maryland','MA':'Massachusetts','MI':'Michigan','MN':'Minnesota',
+    'MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada',
+    'NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina',
+    'ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania',
+    'RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee','TX':'Texas',
+    'UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington','WV':'West Virginia',
+    'WI':'Wisconsin','WY':'Wyoming','DC':'District of Columbia'
+}
 
-def _states() -> List[str]:
-    # 50 states + DC (we’ll drop DC later if exclude_dc=True)
-    return [
-        'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN',
-        'MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA',
-        'WA','WV','WI','WY','DC'
-    ]
+# Fuel codes in this dataset (facet: fueltypeid):
+#   SUN (solar), WND (wind), HYC (conventional hydro), GEO (geothermal), BIO (biomass)
+#   HPS = hydro pumped storage (exclude from numerator), ALL = all fuels (denominator)
+RENEWABLE_CODES = ["SUN", "WND", "HYC", "GEO", "BIO"]
+TOTAL_CODE = "ALL"
+PUMPED_STORAGE_CODE = "HPS"
+
+def _eia_fetch_all(params: List[Tuple[str, str]]) -> pd.DataFrame:
+    """
+    Fetches all pages from EIA API v2 for the given param list.
+    `params` must be a list of (key, value) tuples to support repeated keys like facets[location][].
+    """
+    if not EIA_API_KEY:
+        raise RuntimeError("EIA_API_KEY not set. Add it to your .env")
+
+    frames = []
+    offset = 0
+    limit = 5000
+
+    while True:
+        # EIA v2 supports pagination via offset/limit; API key must be in the URL (per docs)
+        query = list(params) + [("api_key", EIA_API_KEY), ("offset", str(offset)), ("limit", str(limit))]
+        r = requests.get(f"{BASE}/data/", params=query, timeout=60)
+        r.raise_for_status()
+        js = r.json()
+        data = js.get("response", {}).get("data", [])
+        if not data:
+            break
+        frames.append(pd.DataFrame(data))
+        if len(data) < limit:
+            break
+        offset += limit
+
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+def _fetch_generation_yearly(states: List[str], start_year: int, end_year: int, fuel_codes: List[str]) -> pd.DataFrame:
+    """
+    Pull annual 'generation' for specified states and fueltypeid codes over [start_year, end_year].
+    """
+    params: List[Tuple[str, str]] = []
+    params.append(("frequency", "annual"))
+    params.append(("start", str(start_year)))
+    params.append(("end", str(end_year)))
+    params.append(("data[0]", "generation"))  # column name per EIA v2 for this route
+
+    # facet arrays must be repeated keys
+    for st in states:
+        params.append(("facets[location][]", st))
+    for fc in fuel_codes:
+        params.append(("facets[fueltypeid][]", fc))
+
+    return _eia_fetch_all(params)
 
 def fetch_renewables_share_by_state(start_year: int, end_year: int, exclude_dc: bool = True) -> pd.DataFrame:
     """
-    Returns: DataFrame with columns [state, state_name, year, renewables_share_pct]
-    renewables_share_pct = (hydro + solar + wind + geothermal + biomass) / total * 100
-    (Pumped-storage hydro is excluded from the numerator.)
+    Returns a tidy DataFrame:
+      [state (abbr), state_name, year, renewables_share_pct]
+
+    renewables_share_pct = (SUN + WND + HYC + GEO + BIO) / ALL * 100
+    (HPS pumped-storage hydro is explicitly excluded from the numerator.)
     """
-    energy_sources = ['total','hydroelectric','solar','wind','geothermal','biomass','hydroelectric_pumped_storage']
-    frames = []
-    for es in energy_sources:
-        params = {
-            "frequency": "annual",
-            "data[0]": "value",
-            "facets[state][]": _states(),
-            "facets[energy-source][]": es,
-            "start": start_year,
-            "end": end_year,
-            "sort[0][column]": "period",
-            "sort[0][direction]": "asc",
-        }
-        js = _eia_get("electricity/state-generation", params)
-        rows = js.get("response", {}).get("data", [])
-        if not rows:
-            continue
-        df = pd.DataFrame(rows)[["state", "period", "energy-source", "value"]]
-        df["value"] = pd.to_numeric(df["value"], errors="coerce")
-        df.rename(columns={"period": "year", "energy-source": "energy_source", "value": f"value_{es}"}, inplace=True)
-        frames.append(df)
-
-    if not frames:
-        return pd.DataFrame(columns=["state","state_name","year","renewables_share_pct"])
-
-    from functools import reduce
-    df = reduce(lambda l, r: pd.merge(l, r, on=["state", "year"], how="outer"), frames)
-
-    # Numerator = sum of conventional renewables (exclude pumped storage)
-    ren_cols = [c for c in df.columns if c in [f"value_{s}" for s in ['hydroelectric','solar','wind','geothermal','biomass']]]
-    df["renewable_net_generation_mwh"] = df[ren_cols].sum(axis=1, skipna=True)
-
-    # Denominator = total net generation
-    df.rename(columns={"value_total": "total_net_generation_mwh"}, inplace=True)
-
-    # Share (%)
-    df["renewables_share_pct"] = (df["renewable_net_generation_mwh"] / df["total_net_generation_mwh"]) * 100.0
-
-    # Map state codes to names
-    state_names = {
-        'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California','CO':'Colorado','CT':'Connecticut',
-        'DE':'Delaware','FL':'Florida','GA':'Georgia','HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa',
-        'KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland','MA':'Massachusetts','MI':'Michigan',
-        'MN':'Minnesota','MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire',
-        'NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma',
-        'OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee','TX':'Texas',
-        'UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming','DC':'District of Columbia'
-    }
-    df["state_name"] = df["state"].map(state_names)
-
-    # Keep only valid rows; drop DC if requested
-    df = df[df["state"].isin(state_names.keys())]
+    # 50 states + DC (drop DC if exclude_dc)
+    states = list(STATE_NAMES.keys())
     if exclude_dc:
-        df = df[df["state"] != "DC"]
+        states = [s for s in states if s != "DC"]
 
-    return df[["state", "state_name", "year", "renewables_share_pct"]]
+    # Pull the minimum set of fuels we need to compute the share
+    fuel_codes = sorted(set(RENEWABLE_CODES + [TOTAL_CODE, PUMPED_STORAGE_CODE]))
+
+    df = _fetch_generation_yearly(states, start_year, end_year, fuel_codes)
+    if df.empty:
+        return pd.DataFrame(columns=["state", "state_name", "year", "renewables_share_pct"])
+
+    # Normalize & reshape
+    # Period can be YYYY or YYYY-MM; take the year part
+    df["year"] = df["period"].astype(str).str.slice(0, 4).astype(int)
+    df["generation"] = pd.to_numeric(df["generation"], errors="coerce")
+
+    # Keep only what we need and pivot: (state, year) x fueltypeid
+    df = df[["location", "year", "fueltypeid", "generation"]]
+    wide = df.pivot_table(index=["location", "year"], columns="fueltypeid", values="generation", aggfunc="sum")
+
+    # Ensure all codes exist, fill missing with 0 for safe arithmetic
+    for code in RENEWABLE_CODES + [TOTAL_CODE, PUMPED_STORAGE_CODE]:
+        if code not in wide.columns:
+            wide[code] = 0.0
+
+    wide = wide.reset_index()
+
+    # Numerator: sum of conventional renewables (exclude pumped storage)
+    wide["renewable_net_generation_mwh"] = wide[RENEWABLE_CODES].fillna(0.0).sum(axis=1)
+
+    # Denominator: total generation (ALL)
+    denom = wide[TOTAL_CODE].replace({0: pd.NA})  # avoid div-by-zero
+
+    wide["renewables_share_pct"] = (wide["renewable_net_generation_mwh"] / denom) * 100.0
+    wide["state"] = wide["location"]
+    wide["state_name"] = wide["state"].map(STATE_NAMES)
+
+    out = (
+        wide[["state", "state_name", "year", "renewables_share_pct"]]
+        .dropna(subset=["renewables_share_pct"])
+        .sort_values(["state", "year"])
+        .reset_index(drop=True)
+    )
+    return out
 
