@@ -1,13 +1,27 @@
-import yaml
-import pandas as pd
-from dotenv import load_dotenv
-load_dotenv()
+import os
 from pathlib import Path
 
+# 1) Load .env *before* importing connectors so API keys are available at import time
+from dotenv import load_dotenv
+load_dotenv()
+
+# (Optional) Silence the LibreSSL warning from urllib3 on macOS
+try:
+    import warnings, urllib3
+    warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
+except Exception:
+    pass
+
+import yaml
+import pandas as pd
+
+# 2) Now it's safe to import connectors that read env vars at import-time
 from connectors.census_acs import fetch_broadband_adoption_by_state
 from connectors.eia import fetch_renewables_share_by_state
+
 from utils import long_to_wide, compute_other_states_simple_average
-from io.excel_writer import write_metric_sheet
+from excel_io.excel_writer import write_metric_sheet
+
 
 def main():
     root = Path(__file__).resolve().parent
@@ -26,25 +40,32 @@ def main():
         title = m.get("title", mid)
         notes = m.get("annotations", [])
 
+        # --- Metric switchboard ---
         if mid == "broadband_adoption_households_share":
             df = fetch_broadband_adoption_by_state(start_year, end_year)
             df["state_name"] = df["NAME"]
-            # Drop DC and PR
             df = df[~df["state_name"].isin(["District of Columbia", "Puerto Rico"])]
             df = df.rename(columns={"broadband_adoption_share": "value"})
 
         elif mid == "electricity_renewables_generation_share":
-            df = fetch_renewables_share_by_state(start_year, end_year, exclude_dc=True)
-            df = df.rename(columns={"renewables_share_pct": "value"})
+            if not os.getenv("EIA_API_KEY"):
+                print("EIA_API_KEY not set -> skipping renewables metric.")
+                continue
+            try:
+                df = fetch_renewables_share_by_state(start_year, end_year, exclude_dc=True)
+                df = df.rename(columns={"renewables_share_pct": "value"})
+            except Exception as e:
+                print(f"Renewables metric failed: {e}\nSkipping.")
+                continue
 
         else:
-            # Unknown metric in this minimal starter; skip
+            # Unknown metric in this starter
             continue
 
-        # wide matrix: states x years
+        # --- Build wide matrix (states x years) ---
         wide = long_to_wide(df, state_col="state_name", year_col="year", value_col="value")
 
-        # Comparator: simple average of other US states (exclude Hawaii and DC)
+        # Comparator: simple average of other US states (exclude Hawaii + DC)
         exclude_states = ["Hawaii", "District of Columbia"]
         avg = compute_other_states_simple_average(wide, exclude_states=exclude_states)
         wide.loc["Other US States Average"] = avg
@@ -52,7 +73,7 @@ def main():
         if "Hawaii" not in wide.index:
             raise RuntimeError(f"Hawaii not found for metric {mid}")
 
-        # Sheet name mapping
+        # Friendly sheet names (the writer will truncate to Excel limits)
         sheet_name = {
             "broadband_adoption_households_share": "Infrastructure- Broadband (auto)",
             "electricity_renewables_generation_share": "Environment-Renewables Share (auto)",
@@ -76,6 +97,6 @@ def main():
     writer.close()
     print(f"Wrote {out_xlsx}")
 
+
 if __name__ == "__main__":
     main()
-
