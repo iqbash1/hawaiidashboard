@@ -15,11 +15,10 @@ except Exception:
 import yaml
 import pandas as pd
 
-from connectors.census_acs import fetch_broadband_adoption_by_state
+from connectors.census_acs import fetch_broadband_adoption_by_state, fetch_uninsured_share_by_state
 from connectors.eia import fetch_renewables_share_by_state
 from utils import long_to_wide, compute_other_states_simple_average
 from excel_io.excel_writer import write_metric_sheet
-
 
 def write_site_json(out_dir: Path, metric_cfg: dict, years, hi_vals, other_vals):
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -35,7 +34,6 @@ def write_site_json(out_dir: Path, metric_cfg: dict, years, hi_vals, other_vals)
         "last_updated_utc": datetime.now(timezone.utc).isoformat(),
     }
     (out_dir / f'{metric_cfg["id"]}.json').write_text(json.dumps(payload, indent=2))
-
 
 def main():
     root = Path(__file__).resolve().parent
@@ -74,6 +72,12 @@ def main():
                 print(f"Renewables metric failed: {e} -> skipping.")
                 continue
 
+        elif mid == "public_health_uninsured_share":
+            df = fetch_uninsured_share_by_state(start_year, end_year)
+            df["state_name"] = df["NAME"]
+            df = df[~df["state_name"].isin(["District of Columbia", "Puerto Rico"])]
+            df = df.rename(columns={"uninsured_share": "value"})
+
         else:
             continue
 
@@ -92,6 +96,7 @@ def main():
         sheet_name = {
             "broadband_adoption_households_share": "Infra-Broadband (auto)",
             "electricity_renewables_generation_share": "Env-Renewables (auto)",
+            "public_health_uninsured_share": "Health-Uninsured (auto)",
         }.get(mid, mid[:31])
 
         write_metric_sheet(
@@ -117,7 +122,6 @@ def main():
 
     writer.close()
     print(f"Wrote {out_xlsx}")
-
 
 if __name__ == "__main__":
     main()

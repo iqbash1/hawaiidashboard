@@ -14,6 +14,7 @@
       broadband_any_type: "B28002_004E"
     geography: "state:*"
     dataset: "acs/acs1"
+    human_url: "https://data.census.gov/"
   denominator: "total_households"
   numerator: "broadband_any_type"
   normalize: "percent"
@@ -21,8 +22,8 @@
     kind: "simple_mean_other_states"
     exclude: ["HI", "DC"]
   annotations:
-    - "ACS questionnaire/response options changed in 2016; use caution comparing 2013–2015 with 2016+."
-    - "ACS did not publish standard 1-year estimates for 2020 due to COVID-19; we skip 2020 (or use experimental with footnote)."
+    - "ACS questionnaire changed in 2016; use caution comparing 2013–2015 with 2016+."
+    - "ACS did not publish standard 1-year estimates for 2020; skipped or footnoted."
 
 - id: electricity_renewables_generation_share
   title: "Renewables’ share of electricity generation (% of MWh)"
@@ -34,12 +35,8 @@
     end: 2023
   source:
     system: "eia"
-    endpoint: "electricity/state-generation"
-    strategy: "renewables_div_total"
-    renewable_sources: ["hydro","solar","wind","geothermal","biomass"]
-    exclude_from_numerator: ["pumped_storage"]
-    facets:
-      sector: ["all"]
+    endpoint: "electricity/electric-power-operational-data"
+    human_url: "https://www.eia.gov/opendata/browse/#/electricity"
   denominator: "total_net_generation_mwh"
   numerator: "renewable_net_generation_mwh"
   normalize: "percent"
@@ -47,6 +44,25 @@
     kind: "simple_mean_other_states"
     exclude: ["HI", "DC"]
   annotations:
-    - "Small-scale (behind-the-meter) solar included in EIA state estimates beginning in 2014."
-    - "Exclude pumped-storage hydro from numerator to avoid counting storage as generation."
+    - "Includes small-scale solar; pumped storage excluded from numerator."
 
+- id: public_health_uninsured_share
+  title: "Uninsured rate (% of residents)"
+  responsibility: "Public Health"
+  unit: "percent"
+  frequency: "annual"
+  years:
+    start: 2013
+    end: 2023
+  source:
+    system: "census_acs"
+    table: "S2701"
+    variable: "S2701_C05_001"
+    dataset: "acs/acs1/subject"
+    human_url: "https://data.census.gov/"
+  normalize: "as_is_percent"
+  comparator:
+    kind: "simple_mean_other_states"
+    exclude: ["HI", "DC"]
+  annotations:
+    - "ACS 2020 1-year release is experimental; skipped or footnoted."

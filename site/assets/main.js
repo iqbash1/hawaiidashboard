@@ -5,7 +5,6 @@ async function loadMetric(slug) {
 }
 
 function makeLineChart(ctx, years, hawaii, other, title, unit) {
-  // Build a Chart.js line chart with two series
   return new Chart(ctx, {
     type: 'line',
     data: {
@@ -23,7 +22,7 @@ function makeLineChart(ctx, years, hawaii, other, title, unit) {
         legend: { position: 'bottom' }
       },
       scales: {
-        y: { title: { display: !!unit, text: unit || '' }, ticks: { callback: (v) => v } },
+        y: { title: { display: !!unit, text: unit || '' } },
         x: { ticks: { autoSkip: true, maxTicksLimit: 10 } }
       }
     }
@@ -48,6 +47,16 @@ function setMeta(el, payload) {
     setMeta(document.getElementById('meta-broadband'), bb);
   } catch (e) {
     document.getElementById('meta-broadband').textContent = 'Broadband data unavailable.';
+    console.error(e);
+  }
+
+  try {
+    const un = await loadMetric('public_health_uninsured_share');
+    makeLineChart(document.getElementById('chart-uninsured').getContext('2d'),
+      un.years, un.hawaii, un.other_states_avg, un.title, un.unit);
+    setMeta(document.getElementById('meta-uninsured'), un);
+  } catch (e) {
+    document.getElementById('meta-uninsured').textContent = 'Uninsured data unavailable.';
     console.error(e);
   }
 
