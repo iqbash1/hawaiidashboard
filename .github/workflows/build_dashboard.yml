@@ -7,12 +7,19 @@ on:
     paths:
       - '**/*.py'
       - 'config/**'
+      - 'site/**'
   schedule:
     # 06:00 UTC on the 1st of Jan, Apr, Jul, Oct (quarterly)
     - cron: '0 6 1 1,4,7,10 *'
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -33,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pipeline (build Excel + curated CSVs)
+      - name: Run pipeline (build Excel + curated CSVs + site JSON)
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
@@ -58,3 +65,19 @@ jobs:
             git pull --rebase
             git push
           fi
+
+      - name: Upload static site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

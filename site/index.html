@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Hawaiʻi State Dashboard</title>
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <header class="container">
+      <h1>Hawaiʻi State Dashboard</h1>
+      <p class="tagline">Ten‑year trends. Blue: Hawaiʻi. Gray: simple average of other U.S. states (excludes HI, DC).</p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Broadband adoption — % of households with a broadband subscription</h2>
+        <canvas id="chart-broadband" height="120"></canvas>
+        <div id="meta-broadband" class="meta"></div>
+      </section>
+
+      <section class="card">
+        <h2>Renewables — share of electricity generation (% of MWh)</h2>
+        <canvas id="chart-renewables" height="120"></canvas>
+        <div id="meta-renewables" class="meta"></div>
+      </section>
+    </main>
+
+    <footer class="container footer">
+      <p>Data: federal sources; refreshed quarterly via GitHub Actions. See notes under each chart.</p>
+    </footer>
+
+    <script src="assets/main.js"></script>
+  </body>
+</html>
