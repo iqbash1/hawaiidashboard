@@ -1,0 +1,60 @@
+name: build-dashboard
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '**/*.py'
+      - 'config/**'
+  schedule:
+    # 06:00 UTC on the 1st of Jan, Apr, Jul, Oct (quarterly)
+    - cron: '0 6 1 1,4,7,10 *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline (build Excel + curated CSVs)
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: |
+          python pipeline.py
+
+      - name: Upload workbook artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HI_dashboard_auto_demo
+          path: output/HI_dashboard_auto_demo.xlsx
+
+      - name: Commit curated CSVs back to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/curated/*.csv || true
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "data: refresh curated CSVs [skip ci]"
+            git pull --rebase
+            git push
+          fi
