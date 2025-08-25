@@ -8,33 +8,63 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    <header class="container">
-      <h1>Hawaiʻi State Dashboard</h1>
-      <p class="tagline">Ten‑year trends. Blue: Hawaiʻi. Gray: simple average of other U.S. states (excludes HI, DC).</p>
+    <header class="topbar">
+      <div class="wrap">
+        <a class="brand" href="./">Hawaiʻi State Dashboard</a>
+        <nav class="nav">
+          <a href="./">Charts</a>
+          <a href="about.html">About</a>
+          <a href="https://github.com/iqbash1/hawaiidashboard" target="_blank" rel="noopener">Code</a>
+        </nav>
+      </div>
     </header>
 
-    <main class="container">
-      <section class="card">
-        <h2>Broadband adoption — % of households with a broadband subscription</h2>
-        <canvas id="chart-broadband" height="120"></canvas>
-        <div id="meta-broadband" class="meta"></div>
-      </section>
+    <main class="wrap">
+      <p class="lede">Ten‑year trends. Blue = Hawaiʻi. Gray = simple average of other U.S. states (excludes HI, DC). Data refreshes quarterly; some series publish annually.</p>
 
-      <section class="card">
-        <h2>Uninsured rate — % of residents without health insurance</h2>
-        <canvas id="chart-uninsured" height="120"></canvas>
-        <div id="meta-uninsured" class="meta"></div>
-      </section>
+      <div class="grid">
+        <section class="card">
+          <h2>Premature death — YPLL under age 75 (per 100,000)</h2>
+          <canvas id="chart-ypll" height="120"></canvas>
+          <div id="meta-ypll" class="meta">
+            <a id="dl-ypll-json" href="#" target="_blank" rel="noopener">Download JSON</a> ·
+            <a id="dl-ypll-csv"  href="#" target="_blank" rel="noopener">Download CSV</a>
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>Renewables — share of electricity generation (% of MWh)</h2>
-        <canvas id="chart-renewables" height="120"></canvas>
-        <div id="meta-renewables" class="meta"></div>
-      </section>
+        <section class="card">
+          <h2>Uninsured rate — % of residents without health insurance</h2>
+          <canvas id="chart-uninsured" height="120"></canvas>
+          <div id="meta-uninsured" class="meta">
+            <a id="dl-uninsured-json" href="#" target="_blank" rel="noopener">Download JSON</a> ·
+            <a id="dl-uninsured-csv"  href="#" target="_blank" rel="noopener">Download CSV</a>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Broadband adoption — % of households with a broadband subscription</h2>
+          <canvas id="chart-broadband" height="120"></canvas>
+          <div id="meta-broadband" class="meta">
+            <a id="dl-broadband-json" href="#" target="_blank" rel="noopener">Download JSON</a> ·
+            <a id="dl-broadband-csv"  href="#" target="_blank" rel="noopener">Download CSV</a>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Renewables — share of electricity generation (% of MWh)</h2>
+          <canvas id="chart-renewables" height="120"></canvas>
+          <div id="meta-renewables" class="meta">
+            <a id="dl-renewables-json" href="#" target="_blank" rel="noopener">Download JSON</a> ·
+            <a id="dl-renewables-csv"  href="#" target="_blank" rel="noopener">Download CSV</a>
+          </div>
+        </section>
+      </div>
     </main>
 
-    <footer class="container footer">
-      <p>Data: federal sources; refreshed quarterly via GitHub Actions. See notes under each chart.</p>
+    <footer class="footer">
+      <div class="wrap">
+        <p>Data from trusted federal sources; refreshed by GitHub Actions. Read why we chose these exact measures in <a href="about.html">About</a>.</p>
+      </div>
     </footer>
 
     <script src="assets/main.js"></script>

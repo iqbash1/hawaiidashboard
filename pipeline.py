@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()
 
-# (optional) silence macOS LibreSSL warning locally
+# Silence macOS LibreSSL warning locally (no-op on CI)
 try:
     import warnings, urllib3
     warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
@@ -17,8 +17,10 @@ import pandas as pd
 
 from connectors.census_acs import fetch_broadband_adoption_by_state, fetch_uninsured_share_by_state
 from connectors.eia import fetch_renewables_share_by_state
+from connectors.cdc_wisqars import fetch_ypll75_rate_by_state
 from utils import long_to_wide, compute_other_states_simple_average
 from excel_io.excel_writer import write_metric_sheet
+
 
 def write_site_json(out_dir: Path, metric_cfg: dict, years, hi_vals, other_vals):
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -33,7 +35,18 @@ def write_site_json(out_dir: Path, metric_cfg: dict, years, hi_vals, other_vals)
         "source": metric_cfg.get("source", {}),
         "last_updated_utc": datetime.now(timezone.utc).isoformat(),
     }
-    (out_dir / f'{metric_cfg["id"]}.json').write_text(json.dumps(payload, indent=2))
+    (out_dir / f{metric_cfg[id]}.json).write_text(json.dumps(payload, indent=2))
+
+
+def write_site_csv(out_dir: Path, metric_cfg: dict, df_tidy: pd.DataFrame):
+    """
+    Write a CSV for the website: columns [state, year, value].
+    Uses state full names (Hawaii, etc.) so it is human-friendly.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    df = df_tidy[["state_name", "year", "value"]].rename(columns={"state_name": "state"})
+    (out_dir / f{metric_cfg[id]}.csv).write_text(df.to_csv(index=False))
+
 
 def main():
     root = Path(__file__).resolve().parent
@@ -45,6 +58,7 @@ def main():
     writer = pd.ExcelWriter(out_xlsx, engine="xlsxwriter")
 
     site_json_dir = root / "site" / "data" / "v1"
+    site_csv_dir  = root / "site" / "data" / "v1" / "csv"
 
     for m in cfg:
         mid = m["id"]
@@ -63,7 +77,7 @@ def main():
 
         elif mid == "electricity_renewables_generation_share":
             if not os.getenv("EIA_API_KEY"):
-                print("EIA_API_KEY not set -> skipping renewables metric (site JSON & sheet).")
+                print("EIA_API_KEY not set -> skipping renewables metric.")
                 continue
             try:
                 df = fetch_renewables_share_by_state(start_year, end_year, exclude_dc=True)
@@ -77,6 +91,14 @@ def main():
             df["state_name"] = df["NAME"]
             df = df[~df["state_name"].isin(["District of Columbia", "Puerto Rico"])]
             df = df.rename(columns={"uninsured_share": "value"})
+
+        elif mid == "public_health_ypll75_rate":
+            try:
+                df = fetch_ypll75_rate_by_state(start_year, end_year)
+            except Exception as e:
+                print(f"YPLL metric failed: {e} -> skipping.")
+                continue
+            # df already has [state_name, year, value]
 
         else:
             continue
@@ -97,31 +119,33 @@ def main():
             "broadband_adoption_households_share": "Infra-Broadband (auto)",
             "electricity_renewables_generation_share": "Env-Renewables (auto)",
             "public_health_uninsured_share": "Health-Uninsured (auto)",
+            "public_health_ypll75_rate": "Health-YPLL<75 (auto)",
         }.get(mid, mid[:31])
 
-        write_metric_sheet(
-            writer,
-            sheet_name,
-            wide,
-            title_cells={"responsibility": responsibility, "metric": title},
-            notes=notes,
-        )
+        write_metric_sheet(writer, sheet_name, wide,
+                           title_cells={"responsibility": responsibility, "metric": title},
+                           notes=notes)
 
         # --- Curated CSV for archive ---
         (root / "data" / "curated").mkdir(parents=True, exist_ok=True)
         df[["state_name", "year", "value"]].rename(columns={"state_name": "state"}) \
           .to_csv(root / "data" / "curated" / f"{mid}.csv", index=False)
 
-        # --- JSON for the website (last 10 years) ---
-        all_years = [int(y) for y in list(wide.columns)]
-        all_years = sorted([y for y in all_years if isinstance(y, (int, float))])
+        # --- Website JSON (last 10 yrs) + CSV (full period) ---
+        # JSON: last 10 years (for small payloads)
+        all_years = [int(y) for y in list(wide.columns) if isinstance(y, (int, float))]
+        all_years = sorted(all_years)
         years = all_years[-10:] if len(all_years) > 10 else all_years
         hi_vals = [wide.loc["Hawaii", y] if y in wide.columns else None for y in years]
         other_vals = [wide.loc["Other US States Average", y] if y in wide.columns else None for y in years]
         write_site_json(site_json_dir, m, years, hi_vals, other_vals)
 
+        # CSV: full period, tidy
+        write_site_csv(site_csv_dir, m, df)
+
     writer.close()
     print(f"Wrote {out_xlsx}")
+
 
 if __name__ == "__main__":
     main()
