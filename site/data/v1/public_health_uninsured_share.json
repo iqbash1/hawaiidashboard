@@ -1,0 +1,52 @@
+{
+  "metric_id": "public_health_uninsured_share",
+  "title": "Uninsured rate (% of residents)",
+  "unit": "percent",
+  "years": [
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2021,
+    2022,
+    2023
+  ],
+  "hawaii": [
+    93.3,
+    94.7,
+    4.0,
+    3.5,
+    3.8,
+    4.1,
+    4.2,
+    3.9,
+    3.5,
+    3.2
+  ],
+  "other_states_avg": [
+    86.49183673469389,
+    89.1,
+    8.918367346938776,
+    8.071428571428571,
+    8.244897959183675,
+    8.277551020408163,
+    8.585714285714287,
+    8.030612244897958,
+    7.483673469387756,
+    7.357142857142856
+  ],
+  "notes": [
+    "ACS 2020 1-year release is experimental; skipped or footnoted."
+  ],
+  "source": {
+    "system": "census_acs",
+    "table": "S2701",
+    "variable": "S2701_C05_001",
+    "dataset": "acs/acs1/subject",
+    "human_url": "https://data.census.gov/"
+  },
+  "last_updated_utc": "2025-08-25T17:11:12.961130+00:00"
+}

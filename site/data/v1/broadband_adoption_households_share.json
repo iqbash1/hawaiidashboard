@@ -1,0 +1,57 @@
+{
+  "metric_id": "broadband_adoption_households_share",
+  "title": "Households with a broadband Internet subscription (%)",
+  "unit": "percent",
+  "years": [
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2021,
+    2022,
+    2023
+  ],
+  "hawaii": [
+    12.598862525548743,
+    11.54493765099197,
+    8.635319866527933,
+    83.17605096212061,
+    84.48408349669707,
+    85.73364462376101,
+    88.02447458515921,
+    91.33916911524649,
+    91.29372487758349,
+    92.61649166427077
+  ],
+  "other_states_avg": [
+    16.211702298555043,
+    15.010904286420148,
+    13.697257226066966,
+    80.77604545531021,
+    82.7585813399065,
+    84.35930713265394,
+    85.7397726626932,
+    89.5366394710423,
+    90.47759730472809,
+    91.61315065763081
+  ],
+  "notes": [
+    "ACS questionnaire changed in 2016; use caution comparing 2013\u20132015 with 2016+.",
+    "ACS did not publish standard 1-year estimates for 2020; skipped or footnoted."
+  ],
+  "source": {
+    "system": "census_acs",
+    "table": "B28002",
+    "variables": {
+      "total_households": "B28002_001E",
+      "broadband_any_type": "B28002_004E"
+    },
+    "geography": "state:*",
+    "dataset": "acs/acs1",
+    "human_url": "https://data.census.gov/"
+  },
+  "last_updated_utc": "2025-08-25T17:10:56.341018+00:00"
+}
