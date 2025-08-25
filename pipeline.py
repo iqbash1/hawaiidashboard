@@ -35,7 +35,7 @@ def write_site_json(out_dir: Path, metric_cfg: dict, years, hi_vals, other_vals)
         "source": metric_cfg.get("source", {}),
         "last_updated_utc": datetime.now(timezone.utc).isoformat(),
     }
-    (out_dir / f{metric_cfg[id]}.json).write_text(json.dumps(payload, indent=2))
+    (out_dir / f"{metric_cfg[id]}.json").write_text(json.dumps(payload, indent=2))
 
 
 def write_site_csv(out_dir: Path, metric_cfg: dict, df_tidy: pd.DataFrame):
@@ -45,7 +45,7 @@ def write_site_csv(out_dir: Path, metric_cfg: dict, df_tidy: pd.DataFrame):
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     df = df_tidy[["state_name", "year", "value"]].rename(columns={"state_name": "state"})
-    (out_dir / f{metric_cfg[id]}.csv).write_text(df.to_csv(index=False))
+    (out_dir / f"{metric_cfg[id]}.csv").write_text(df.to_csv(index=False))
 
 
 def main():
