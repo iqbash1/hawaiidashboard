@@ -1,40 +1,69 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>About — Hawaiʻi State Dashboard</title>
-    <link rel="stylesheet" href="assets/styles.css" />
-  </head>
-  <body>
-    <header class="topbar">
-      <div class="wrap">
-        <a class="brand" href="./">Hawaiʻi State Dashboard</a>
-        <nav class="nav">
-          <a href="./">Charts</a>
-          <a class="active" href="about.html">About</a>
-          <a href="https://github.com/iqbash1/hawaiidashboard" target="_blank" rel="noopener">Code</a>
-        </nav>
-      </div>
-    </header>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>About – Hawaiʻi State Dashboard</title>
+  <link rel="stylesheet" href="assets/styles.css"/>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="/">Hawaiʻi State Dashboard</a>
+      <nav class="nav">
+        <a href="/">Home</a>
+        <a class="active" href="/about.html">About</a>
+      </nav>
+    </div>
+  </header>
 
-    <main class="wrap narrow">
-      <h1>Why this dashboard exists</h1>
-      <p>We focus on a handful of bedrock promises residents can feel: safety, health, education, jobs, infrastructure, environment, fiscal stewardship and disaster resilience. For each, we track one or two outcomes that move when state policy and implementation change, using free, non‑partisan data that’s reported the same way for all 50 states. Ten‑year trend lines, two colors: blue for Hawaiʻi and gray for the simple average of other U.S. states. One glance shows whether we’re moving in the right direction, and whether we’re ahead or behind.</p>
-      <p>What you won’t find: composite indexes that hide how they’re built; cherrypicked time frames; or #1 rankings. We care about steady progress, not bragging rights.</p>
-      <p>See the full rationale and definitions in our internal guide.</p>
-      <ul>
-        <li><strong>Normalized metrics:</strong> wherever population skews numbers, we use per‑capita, percentages, or other standard forms so big and small states are comparable.</li>
-        <li><strong>Apples‑to‑apples:</strong> all sources are federal, public, and consistent across states.</li>
-        <li><strong>Refresh cadence:</strong> most update annually; the site auto‑refreshes quarterly.</li>
-      </ul>
-      <p>Questions or suggestions? Open an issue in the <a href="https://github.com/iqbash1/hawaiidashboard" target="_blank" rel="noopener">GitHub repository</a>.</p>
-    </main>
+  <main class="container prose">
+    <h1>Why this dashboard exists</h1>
+    <p>When residents elect a State government, they hand over tax dollars and trust. In return, the State must deliver on a few bedrock promises: keep us safe and healthy, educate our children, enable good jobs, maintain shared infrastructure, protect us from disasters, manage public money wisely, and continually improve the system so people stay and build their futures here.</p>
 
-    <footer class="footer">
-      <div class="wrap">
-        <p>© Hawaiʻi State Dashboard</p>
-      </div>
-    </footer>
-  </body>
+    <h2>Why now</h2>
+    <p>From 2020–24, Hawaiʻi lost tens of thousands of residents to the U.S. mainland. We need a clear, non‑partisan, data‑driven check on where State policy is helping—or missing. This dashboard keeps it light enough to read on your phone, and strong enough to hold leaders accountable.</p>
+
+    <h2>What we measure</h2>
+    <ul>
+      <li><strong>Safety:</strong> Violent crime per 100,000.</li>
+      <li><strong>Public Health – Outcomes:</strong> Years of Potential Life Lost (&lt; 75).</li>
+      <li><strong>Public Health – Access:</strong> Uninsured rate.</li>
+      <li><strong>K‑12:</strong> 4‑year high‑school graduation rate.</li>
+      <li><strong>Higher Ed:</strong> % adults 25+ with a bachelor’s degree.</li>
+      <li><strong>Jobs:</strong> Annual unemployment rate.</li>
+      <li><strong>Prosperity & Diversification:</strong> Real median household income; tourism share of GDP.</li>
+      <li><strong>Cost of Living:</strong> Renter cost burden; unsheltered homelessness per 10k.</li>
+      <li><strong>Infrastructure:</strong> % state‑owned bridge deck “poor”; % households with broadband.</li>
+      <li><strong>Energy & Environment:</strong> Renewables’ share of electricity generation.</li>
+      <li><strong>Fiscal Stewardship:</strong> Rainy‑day fund as % of general‑fund spending.</li>
+      <li><strong>Disaster Resilience:</strong> Weather‑disaster losses per capita (CPI‑adjusted).</li>
+      <li><strong>Public Confidence:</strong> Voter participation; net domestic migration.</li>
+    </ul>
+
+    <h2>How to read the charts</h2>
+    <ul>
+      <li>Blue = Hawaiʻi. Gray = simple average of the other U.S. states (DC excluded).</li>
+      <li>Ten‑year trend lines. Every metric is normalized (per‑capita, rate, %), so big and small states compare fairly.</li>
+      <li>If a series has data breaks (e.g., methodology changes), we flag it as non‑comparable.</li>
+    </ul>
+
+    <h2>What we don’t do</h2>
+    <ul>
+      <li>No opaque composite indices or cherry‑picked time frames.</li>
+      <li>No brag‑sheet rankings—steady progress matters more than “#1”.</li>
+    </ul>
+
+    <h2>Data sources</h2>
+    <p>Authoritative, federal or nationally maintained sources with consistent, 50‑state coverage (e.g., FBI Crime Data Explorer, CDC WISQARS, U.S. Census ACS, BEA, EIA, HUD, NASBO, NOAA NCEI). Each chart’s “Source” link points to the exact dataset/API.</p>
+
+    <p class="small mt-4">Questions or suggestions? Open an issue in our GitHub repo or email the maintainer.</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Hawaiʻi State Dashboard</span>
+    </div>
+  </footer>
+</body>
 </html>
