@@ -132,7 +132,6 @@ def main():
           .to_csv(root / "data" / "curated" / f"{mid}.csv", index=False)
 
         # --- Website JSON (last 10 yrs) + CSV (full period) ---
-        # JSON: last 10 years (for small payloads)
         all_years = [int(y) for y in list(wide.columns) if isinstance(y, (int, float))]
         all_years = sorted(all_years)
         years = all_years[-10:] if len(all_years) > 10 else all_years
