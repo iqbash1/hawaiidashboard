@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-Purpose: Probe EIA API v2 for HI annual generation by fuel, compute renewables share, and emit a probe CSV.
-Why: Validate the correct route+facets to unblock metric 'energy_renewables_share_generation'.
-Prev error: Using 'stateid' on this route and omitting 'sectorid' triggered HTTP 500. Fix: use facets[location] and facets[sectorid].
-Future-proofing: Trap HTTP errors and retry with sectorid=98 if 99 fails; classify renewables by description; exclude pumped storage.
+Purpose: Probe EIA v2 'electric-power-operational-data' to compute Hawaii renewables share with an explicit whitelist.
+Why: Prevent false positives like 'COL' (coal) and exclude small-scale PV (DPV) per v1 scope.
+How we avoid past mistake: Build the renewables whitelist from facet names using positive and negative keyword rules, and print the final include/exclude lists for review.
 """
-import os, sys
+import os, sys, json
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 import requests
 
-API = "https://api.eia.gov/v2/electricity/electric-power-operational-data/data/"
-OUT = Path("site/data/v1/csv/_probe_energy_renewables_share_generation_hi.csv")
+API_BASE = "https://api.eia.gov/v2"
+ROUTE = "electricity/electric-power-operational-data"
+DATA_URL = f"{API_BASE}/{ROUTE}/data/"
+FACET_URL = f"{API_BASE}/{ROUTE}/facet/fueltypeid"
+OUT_CSV = Path("site/data/v1/csv/_probe_energy_renewables_share_generation_hi.csv")
+OUT_FACETS = Path("site/data/v1/csv/_probe_eia_fuel_facets.json")
 
 def load_key():
     key = os.getenv("EIA_API_KEY", "")
@@ -23,117 +26,174 @@ def load_key():
                 break
     return key
 
-def fetch_rows(api_key, sector_code):
-    # Request all fuels for HI to classify locally. Annual since 2010.
+def eia_get(url, params):
+    r = requests.get(url, params=params, timeout=60)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_fuel_facets(api_key):
+    j = eia_get(FACET_URL, {"api_key": api_key})
+    vals = j.get("response", {}).get("values")
+    if isinstance(vals, list):
+        pass
+    else:
+        facets = j.get("response", {}).get("facets", [])
+        vals = facets[0].get("values", []) if facets else []
+    out = []
+    for v in vals or []:
+        code = str(v.get("code") or v.get("id") or "").strip()
+        name = (v.get("name") or v.get("description") or "").strip()
+        if code:
+            out.append({"code": code, "name": name})
+    return out
+
+def build_whitelist(facets):
+    # Positive signals for renewables
+    pos = (
+        "solar", "photovoltaic", "pv",  # solar utility-scale
+        "wind",
+        "hydro", "water",               # conventional hydro
+        "geothermal",
+        "biomass", "wood", "landfill", "municipal solid waste", "msw",
+        "black liquor", "bagasse", "biogas", "waste wood"
+    )
+    # Hard negatives
+    neg = (
+        "coal", "natural gas", "petroleum", "oil", "diesel", "naphtha",
+        "nuclear", "uranium", "pumped", "storage", "behind-the-meter",
+        "distributed"
+    )
+    # Exclude known small-scale PV and aggregators that double-count
+    explicit_exclude = {"DPV", "SUN"}  # DPV=distributed PV, SUN=total solar (often SPV+DPV)
+    include, exclude_from_total, allcodes = set(), set(), set()
+
+    for f in facets:
+        code = f["code"].upper()
+        name = f["name"].lower()
+        allcodes.add(code)
+
+        # Mark pumped storage to exclude from totals
+        if "pumped" in name:
+            exclude_from_total.add(code)
+            continue
+
+        # Decide renewables
+        has_pos = any(tok in name for tok in pos)
+        has_neg = any(tok in name for tok in neg)
+        if code in explicit_exclude:
+            has_neg = True
+        if has_pos and not has_neg:
+            include.add(code)
+
+    # Tighten whitelist to typical utility-scale renewables if present
+    # Prefer specific subcodes when available (e.g., SPV over SUN).
+    preferred = set()
+    for code in include:
+        if code in {"SPV","WND","HYC","GEO","BIO","WOO","WWW","WAS","MLG","MSB","OBW","OB2"}:
+            preferred.add(code)
+    if preferred:
+        include = preferred
+
+    return include, exclude_from_total, allcodes
+
+def fetch_hi_generation(api_key, sector="99"):
     params = {
         "api_key": api_key,
         "frequency": "annual",
         "data[]": "generation",
         "facets[location][]": "HI",
-        "facets[sectorid][]": sector_code,   # '99' = All sectors; '98' = Electric power
+        "facets[sectorid][]": sector,  # 99=All sectors; 98=Electric power if needed
         "start": "2010",
         "end": str(datetime.utcnow().year),
         "length": "5000",
         "sort[0][column]": "period",
         "sort[0][direction]": "asc",
     }
-    r = requests.get(API, params=params, timeout=60)
-    r.raise_for_status()
-    j = r.json()
+    j = eia_get(DATA_URL, params)
     return j.get("response", {}).get("data", [])
 
-def classify_and_aggregate(rows):
-    # year -> dict fuel -> MWh
+def compute_share(rows, whitelist, excluded_from_total):
+    # year -> fuel -> MWh
     gen = defaultdict(lambda: defaultdict(float))
     for r in rows:
         y = str(r.get("period"))
-        fuel_id = (r.get("fueltypeid") or "").strip()
-        fuel_desc = (r.get("fuelTypeDescription") or "").lower()
+        fid = str(r.get("fueltypeid") or "").upper()
         val = r.get("generation")
         try:
             mwh = float(val) if val not in (None, "", "NA") else 0.0
         except Exception:
             mwh = 0.0
-        if not (y.isdigit() and fuel_id):
-            continue
-        gen[y][fuel_id] += mwh
+        if y.isdigit() and fid:
+            gen[y][fid] += mwh
 
-    # identify renewables and exclusions by description keywords across any row
-    renew_kw = ("solar","wind","hydro","water","geothermal","biomass","wood",
-                "landfill","municipal solid waste","msw","black liquor","bagasse","waste","bio","biogas")
-    exclude_kw = ("pumped",)  # exclude pumped storage from totals
-
-    # build lookup fuel_id -> flags using any description encountered
-    desc_by_id = {}
-    for r in rows:
-        fid = (r.get("fueltypeid") or "").strip()
-        fd = (r.get("fuelTypeDescription") or "").lower()
-        if fid:
-            desc_by_id.setdefault(fid, set()).add(fd)
-
-    is_renew = set()
-    is_excluded = set()
-    for fid, descs in desc_by_id.items():
-        d = " ".join(descs)
-        if any(k in d for k in renew_kw): is_renew.add(fid)
-        if any(k in d for k in exclude_kw): is_excluded.add(fid)
-
-    # compute shares for last 10 years available
     years = sorted([y for y in gen.keys() if y.isdigit()])
     last10 = years[-10:] if len(years) > 10 else years
-    out = []
+    series = []
     for y in last10:
         fuels = gen[y]
-        total = sum(v for f,v in fuels.items() if f not in is_excluded)
-        ren = sum(v for f,v in fuels.items() if f in is_renew)
+        total = sum(v for f,v in fuels.items() if f not in excluded_from_total)
+        ren = sum(v for f,v in fuels.items() if f in whitelist)
         share = (ren/total*100.0) if total > 0 else None
-        out.append((y, share))
-    return out, is_renew, is_excluded
+        series.append((y, share))
+    return series
 
 def main():
     key = load_key()
     if not key:
         print("EIA_API_KEY not set. Create .env with EIA_API_KEY=... or export it. Exiting 0.")
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text("state,year,share\n")
+        OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+        OUT_CSV.write_text("state,year,share\n")
         return 0
 
-    # Try sector 99 (All sectors) first, then 98 (Electric power)
-    sector_try = ["99","98"]
-    rows = []
+    facets = fetch_fuel_facets(key)
+    OUT_FACETS.parent.mkdir(parents=True, exist_ok=True)
+    OUT_FACETS.write_text(json.dumps(facets, indent=2))
+
+    whitelist, excluded_from_total, allcodes = build_whitelist(facets)
+
+    # Try 99 then 98
     tried = []
-    for s in sector_try:
+    rows = []
+    for sector in ("99","98"):
         try:
-            rows = fetch_rows(key, s)
-            tried.append((s, "OK", len(rows)))
-            if rows:
-                break
+            rows = fetch_hi_generation(key, sector=sector)
+            tried.append((sector, "OK", len(rows)))
+            if rows: break
         except requests.HTTPError as e:
-            tried.append((s, f"HTTP {getattr(e.response,'status_code',None)}", 0))
-        except Exception as e:
-            tried.append((s, f"ERR {e.__class__.__name__}", 0))
+            tried.append((sector, f"HTTP {getattr(e.response,'status_code',None)}", 0))
+
     if not rows:
-        print("EIA returned no rows. Tried:", tried)
-        print("Avoiding past mistake: we now always include facets[location] and facets[sectorid]. If EIA is down, re-run later.")
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text("state,year,share\n")
+        print("EIA returned no rows; tried sectors:", tried)
+        OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+        OUT_CSV.write_text("state,year,share\n")
         return 0
 
-    series, ren_ids, ex_ids = classify_and_aggregate(rows)
+    series = compute_share(rows, whitelist, excluded_from_total)
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    with OUT.open("w") as f:
+    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
+    with OUT_CSV.open("w") as f:
         f.write("state,year,share\n")
         for y, s in series:
             f.write(f"Hawaii,{y},{'' if s is None else f'{s:.1f}'}\n")
 
-    print("Route:", API)
-    print("Tried sectors:", tried)
-    print("Renewable fuel IDs:", sorted(ren_ids))
-    print("Excluded fuel IDs:", sorted(ex_ids))
-    print(f"Wrote {OUT}")
+    # Print mapping summary for review
+    def label(c): 
+        name = next((v["name"] for v in facets if str(v.get("code") or "").upper()==c), "")
+        return f"{c} :: {name}"
+
+    print("ROUTE:", DATA_URL)
+    print("SECTOR tries:", tried)
+    print("RENEWABLE whitelist (utility-scale focus):")
+    for c in sorted(whitelist):
+        print("  +", label(c))
+    print("EXCLUDED FROM TOTAL (pumped/storage):")
+    for c in sorted(excluded_from_total):
+        print("  -", label(c))
+    print("CSV:", OUT_CSV)
+
     for y, s in series:
         print(f"{y}: {'' if s is None else f'{s:.1f}'}")
+
     return 0
 
 if __name__ == "__main__":
