@@ -1,0 +1,108 @@
+{
+  "sector_used": "98",
+  "codes": {
+    "ALL": [
+      "all fuels"
+    ],
+    "ANT": [
+      "anthracite coal"
+    ],
+    "AOR": [
+      "all renewables"
+    ],
+    "BIO": [
+      "biomass"
+    ],
+    "BIS": [
+      "bituminous coal and synthetic coal"
+    ],
+    "BIT": [
+      "bituminous coal"
+    ],
+    "COL": [
+      "coal, excluding waste coal"
+    ],
+    "COW": [
+      "all coal products"
+    ],
+    "DFO": [
+      "distillate fuel oil"
+    ],
+    "FOS": [
+      "fossil fuels"
+    ],
+    "GEO": [
+      "geothermal"
+    ],
+    "HYC": [
+      "conventional hydroelectric"
+    ],
+    "NG": [
+      "natural gas"
+    ],
+    "NGO": [
+      "natural gas & other gases"
+    ],
+    "OB2": [
+      "biomass"
+    ],
+    "OBW": [
+      "biomass"
+    ],
+    "ORW": [
+      "other renewables"
+    ],
+    "OTH": [
+      "other"
+    ],
+    "PEL": [
+      "petroleum liquids"
+    ],
+    "PET": [
+      "petroleum"
+    ],
+    "REN": [
+      "renewable"
+    ],
+    "RFO": [
+      "residual fuel oil"
+    ],
+    "SPV": [
+      "solar photovoltaic"
+    ],
+    "SUB": [
+      "subbituminous coal"
+    ],
+    "SUN": [
+      "solar"
+    ],
+    "WAS": [
+      "renewable waste products"
+    ],
+    "WND": [
+      "wind"
+    ],
+    "WNT": [
+      "onshore wind turbine"
+    ],
+    "WOO": [
+      "waste oil and other oils"
+    ],
+    "WWW": [
+      "wood and wood wastes"
+    ]
+  },
+  "renewables": [
+    "GEO",
+    "HYC",
+    "OB2",
+    "OBW",
+    "SPV",
+    "SUN",
+    "WND",
+    "WNT",
+    "WWW"
+  ],
+  "exclude_from_total": [],
+  "exclude_everywhere": []
+}

@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Purpose: Probe EIA v2 'electric-power-operational-data' to compute Hawaii renewables share with an explicit whitelist.
-Why: Prevent false positives like 'COL' (coal) and exclude small-scale PV (DPV) per v1 scope.
-How we avoid past mistake: Build the renewables whitelist from facet names using positive and negative keyword rules, and print the final include/exclude lists for review.
+Purpose: Probe EIA v2 'electric-power-operational-data' to compute Hawaii renewables share using row-driven code classification.
+Why: Facet-name-based whitelist failed. Row-driven rules are concrete and reproducible.
+Avoiding past mistakes:
+  - Prefer sector=98 (Electric power) to avoid DPV entirely; fall back to 99 only if needed.
+  - Exclude any code with 'total' in description (aggregators SUN/WNT/TPV/TSN etc.) to prevent double-counting.
+  - Exclude 'pumped' from denominator.
+  - If sector=99, also exclude DPV (distributed PV) from both numerator and denominator.
+  - Renewables = solar PV (utility-scale), wind, hydro (conventional), geothermal, biomass family (wood, landfill gas, MSW, black liquor, bagasse, biogas).
 """
 import os, sys, json
 from pathlib import Path
@@ -10,12 +15,9 @@ from collections import defaultdict
 from datetime import datetime
 import requests
 
-API_BASE = "https://api.eia.gov/v2"
-ROUTE = "electricity/electric-power-operational-data"
-DATA_URL = f"{API_BASE}/{ROUTE}/data/"
-FACET_URL = f"{API_BASE}/{ROUTE}/facet/fueltypeid"
-OUT_CSV = Path("site/data/v1/csv/_probe_energy_renewables_share_generation_hi.csv")
-OUT_FACETS = Path("site/data/v1/csv/_probe_eia_fuel_facets.json")
+API = "https://api.eia.gov/v2/electricity/electric-power-operational-data/data/"
+OUT = Path("site/data/v1/csv/_probe_energy_renewables_share_generation_hi.csv")
+MAP = Path("site/data/v1/csv/_probe_eia_fuel_code_map.json")
 
 def load_key():
     key = os.getenv("EIA_API_KEY", "")
@@ -26,171 +28,170 @@ def load_key():
                 break
     return key
 
-def eia_get(url, params):
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
-    return r.json()
-
-def fetch_fuel_facets(api_key):
-    j = eia_get(FACET_URL, {"api_key": api_key})
-    vals = j.get("response", {}).get("values")
-    if isinstance(vals, list):
-        pass
-    else:
-        facets = j.get("response", {}).get("facets", [])
-        vals = facets[0].get("values", []) if facets else []
-    out = []
-    for v in vals or []:
-        code = str(v.get("code") or v.get("id") or "").strip()
-        name = (v.get("name") or v.get("description") or "").strip()
-        if code:
-            out.append({"code": code, "name": name})
-    return out
-
-def build_whitelist(facets):
-    # Positive signals for renewables
-    pos = (
-        "solar", "photovoltaic", "pv",  # solar utility-scale
-        "wind",
-        "hydro", "water",               # conventional hydro
-        "geothermal",
-        "biomass", "wood", "landfill", "municipal solid waste", "msw",
-        "black liquor", "bagasse", "biogas", "waste wood"
-    )
-    # Hard negatives
-    neg = (
-        "coal", "natural gas", "petroleum", "oil", "diesel", "naphtha",
-        "nuclear", "uranium", "pumped", "storage", "behind-the-meter",
-        "distributed"
-    )
-    # Exclude known small-scale PV and aggregators that double-count
-    explicit_exclude = {"DPV", "SUN"}  # DPV=distributed PV, SUN=total solar (often SPV+DPV)
-    include, exclude_from_total, allcodes = set(), set(), set()
-
-    for f in facets:
-        code = f["code"].upper()
-        name = f["name"].lower()
-        allcodes.add(code)
-
-        # Mark pumped storage to exclude from totals
-        if "pumped" in name:
-            exclude_from_total.add(code)
-            continue
-
-        # Decide renewables
-        has_pos = any(tok in name for tok in pos)
-        has_neg = any(tok in name for tok in neg)
-        if code in explicit_exclude:
-            has_neg = True
-        if has_pos and not has_neg:
-            include.add(code)
-
-    # Tighten whitelist to typical utility-scale renewables if present
-    # Prefer specific subcodes when available (e.g., SPV over SUN).
-    preferred = set()
-    for code in include:
-        if code in {"SPV","WND","HYC","GEO","BIO","WOO","WWW","WAS","MLG","MSB","OBW","OB2"}:
-            preferred.add(code)
-    if preferred:
-        include = preferred
-
-    return include, exclude_from_total, allcodes
-
-def fetch_hi_generation(api_key, sector="99"):
+def fetch_rows(api_key, sector_code):
     params = {
         "api_key": api_key,
         "frequency": "annual",
         "data[]": "generation",
         "facets[location][]": "HI",
-        "facets[sectorid][]": sector,  # 99=All sectors; 98=Electric power if needed
+        "facets[sectorid][]": sector_code,  # 98=Electric power preferred, 99=All sectors fallback
         "start": "2010",
         "end": str(datetime.utcnow().year),
         "length": "5000",
         "sort[0][column]": "period",
         "sort[0][direction]": "asc",
     }
-    j = eia_get(DATA_URL, params)
-    return j.get("response", {}).get("data", [])
+    r = requests.get(API, params=params, timeout=60)
+    r.raise_for_status()
+    return r.json().get("response", {}).get("data", [])
 
-def compute_share(rows, whitelist, excluded_from_total):
-    # year -> fuel -> MWh
-    gen = defaultdict(lambda: defaultdict(float))
+def get_desc(row):
+    for k in ("fuelTypeDescription","fueltypeDescription","fuelType","fueltype","fuelDescription","fueldescription"):
+        v = row.get(k)
+        if v:
+            return str(v)
+    return ""
+
+def classify_codes(rows, sector_used):
+    # Aggregate descriptions per code
+    descs = defaultdict(set)
+    for r in rows:
+        code = str(r.get("fueltypeid") or r.get("fueltype") or "").upper().strip()
+        if code:
+            descs[code].add(get_desc(r).lower().strip())
+
+    pos = (
+        "solar","photovoltaic","pv",
+        "wind",
+        "hydro","water",
+        "geothermal",
+        "biomass","wood","landfill","municipal solid waste","msw",
+        "black liquor","bagasse","biogas","waste wood"
+    )
+    neg = (
+        "coal","natural gas","petroleum","oil","diesel","naphtha",
+        "nuclear","uranium"
+    )
+
+    renewables = set()
+    exclude_from_total = set()
+    exclude_everywhere = set()  # aggregators and DPV (if sector=99)
+
+    for code, ds in descs.items():
+        d = " ".join(sorted(ds))
+        dl = d.lower()
+        if "total" in dl:
+            exclude_everywhere.add(code)
+            continue
+        if "pumped" in dl:
+            exclude_from_total.add(code)
+            continue
+        if sector_used == "99" and (code == "DPV" or "distributed" in dl or "behind-the-meter" in dl):
+            exclude_everywhere.add(code)
+            continue
+
+        has_pos = any(tok in dl for tok in pos)
+        has_neg = any(tok in dl for tok in neg)
+
+        if has_pos and not has_neg:
+            renewables.add(code)
+
+    # If both BIO and its subcodes appear, drop BIO to avoid double-count
+    bio_like = {c for c in renewables if c in {"BIO","WOO","WWW","WAS","MLG","MSB","OBW","OB2"}}
+    if "BIO" in bio_like and len(bio_like) > 1:
+        renewables.discard("BIO")
+
+    # Save map for inspection
+    MAP.parent.mkdir(parents=True, exist_ok=True)
+    MAP.write_text(json.dumps({
+        "sector_used": sector_used,
+        "codes": {c: sorted(list(descs[c])) for c in sorted(descs.keys())},
+        "renewables": sorted(list(renewables)),
+        "exclude_from_total": sorted(list(exclude_from_total)),
+        "exclude_everywhere": sorted(list(exclude_everywhere)),
+    }, indent=2))
+
+    return renewables, exclude_from_total, exclude_everywhere, descs
+
+def compute_series(rows, renewables, exclude_from_total, exclude_everywhere):
+    by_year = defaultdict(lambda: defaultdict(float))  # year -> code -> MWh
     for r in rows:
         y = str(r.get("period"))
-        fid = str(r.get("fueltypeid") or "").upper()
+        code = str(r.get("fueltypeid") or r.get("fueltype") or "").upper().strip()
         val = r.get("generation")
         try:
             mwh = float(val) if val not in (None, "", "NA") else 0.0
         except Exception:
             mwh = 0.0
-        if y.isdigit() and fid:
-            gen[y][fid] += mwh
+        if not (y.isdigit() and code):
+            continue
+        by_year[y][code] += mwh
 
-    years = sorted([y for y in gen.keys() if y.isdigit()])
+    years = sorted([y for y in by_year.keys() if y.isdigit()])
     last10 = years[-10:] if len(years) > 10 else years
-    series = []
+
+    out = []
     for y in last10:
-        fuels = gen[y]
-        total = sum(v for f,v in fuels.items() if f not in excluded_from_total)
-        ren = sum(v for f,v in fuels.items() if f in whitelist)
+        fuels = by_year[y]
+        total = sum(v for c,v in fuels.items() if c not in exclude_everywhere and c not in exclude_from_total)
+        ren = sum(v for c,v in fuels.items() if c in renewables and c not in exclude_everywhere and c not in exclude_from_total)
         share = (ren/total*100.0) if total > 0 else None
-        series.append((y, share))
-    return series
+        out.append((y, share))
+    return out
 
 def main():
     key = load_key()
     if not key:
         print("EIA_API_KEY not set. Create .env with EIA_API_KEY=... or export it. Exiting 0.")
-        OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-        OUT_CSV.write_text("state,year,share\n")
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text("state,year,share\n")
         return 0
 
-    facets = fetch_fuel_facets(key)
-    OUT_FACETS.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FACETS.write_text(json.dumps(facets, indent=2))
-
-    whitelist, excluded_from_total, allcodes = build_whitelist(facets)
-
-    # Try 99 then 98
     tried = []
     rows = []
-    for sector in ("99","98"):
+    sector_used = None
+    for sector in ("98","99"):  # prefer 98 (utility-scale)
         try:
-            rows = fetch_hi_generation(key, sector=sector)
+            rows = fetch_rows(key, sector)
             tried.append((sector, "OK", len(rows)))
-            if rows: break
+            if rows:
+                sector_used = sector
+                break
         except requests.HTTPError as e:
             tried.append((sector, f"HTTP {getattr(e.response,'status_code',None)}", 0))
+        except Exception as e:
+            tried.append((sector, f"ERR {e.__class__.__name__}", 0))
 
     if not rows:
-        print("EIA returned no rows; tried sectors:", tried)
-        OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-        OUT_CSV.write_text("state,year,share\n")
+        print("EIA returned no rows. Tried:", tried)
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text("state,year,share\n")
         return 0
 
-    series = compute_share(rows, whitelist, excluded_from_total)
+    renewables, excl_total, excl_every, descs = classify_codes(rows, sector_used)
+    series = compute_series(rows, renewables, excl_total, excl_every)
 
-    OUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    with OUT_CSV.open("w") as f:
+    # Emit CSV
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    with OUT.open("w") as f:
         f.write("state,year,share\n")
         for y, s in series:
             f.write(f"Hawaii,{y},{'' if s is None else f'{s:.1f}'}\n")
 
-    # Print mapping summary for review
-    def label(c): 
-        name = next((v["name"] for v in facets if str(v.get("code") or "").upper()==c), "")
-        return f"{c} :: {name}"
+    # Print summary
+    def label(c):
+        ds = " | ".join(sorted(descs.get(c, [])))
+        return f"{c} :: {ds}"
 
-    print("ROUTE:", DATA_URL)
-    print("SECTOR tries:", tried)
-    print("RENEWABLE whitelist (utility-scale focus):")
-    for c in sorted(whitelist):
-        print("  +", label(c))
-    print("EXCLUDED FROM TOTAL (pumped/storage):")
-    for c in sorted(excluded_from_total):
-        print("  -", label(c))
-    print("CSV:", OUT_CSV)
-
+    print("ROUTE:", API)
+    print("SECTOR tried:", tried, "USED:", sector_used)
+    print("RENEWABLE codes:")
+    for c in sorted(renewables): print("  +", label(c))
+    print("EXCLUDED FROM TOTAL:")
+    for c in sorted(excl_total): print("  -", label(c))
+    print("EXCLUDED EVERYWHERE (aggregators/DPV):")
+    for c in sorted(excl_every): print("  -", label(c))
+    print("CSV:", OUT)
     for y, s in series:
         print(f"{y}: {'' if s is None else f'{s:.1f}'}")
 
