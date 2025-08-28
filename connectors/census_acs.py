@@ -66,3 +66,78 @@ def _state_fips_to_abbr() -> Dict[int, str]:
             26:'MI',27:'MN',28:'MS',29:'MO',30:'MT',31:'NE',32:'NV',33:'NH',34:'NJ',35:'NM',
             36:'NY',37:'NC',38:'ND',39:'OH',40:'OK',41:'OR',42:'PA',44:'RI',45:'SC',46:'SD',
             47:'TN',48:'TX',49:'UT',50:'VT',51:'VA',53:'WA',54:'WV',55:'WI',56:'WY',11:'DC',72:'PR'}
+
+
+import os, time, requests, pandas as pd
+from datetime import datetime
+from pathlib import Path as _Path
+
+_STATE_FIPS = {
+ "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut",
+ "10":"Delaware","12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa",
+ "20":"Kansas","21":"Kentucky","22":"Louisiana","23":"Maine","24":"Maryland","25":"Massachusetts","26":"Michigan",
+ "27":"Minnesota","28":"Mississippi","29":"Missouri","30":"Montana","31":"Nebraska","32":"Nevada","33":"New Hampshire",
+ "34":"New Jersey","35":"New Mexico","36":"New York","37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma",
+ "41":"Oregon","42":"Pennsylvania","44":"Rhode Island","45":"South Carolina","46":"South Dakota","47":"Tennessee","48":"Texas",
+ "49":"Utah","50":"Vermont","51":"Virginia","53":"Washington","54":"West Virginia","55":"Wisconsin","56":"Wyoming"
+}
+_EXCL = {"11"}  # DC
+
+def _acs_key():
+    k = os.getenv("CENSUS_API_KEY","")
+    if not k and _Path(".env").exists():
+        for line in _Path(".env").read_text().splitlines():
+            if line.strip().startswith("CENSUS_API_KEY="):
+                k = line.split("=",1)[1].strip().strip("'").strip('"'); break
+    return k
+
+def _year_ok(y, key):
+    params = {"get":"NAME,S1501_C02_015E","for":"state:*"}
+    if key: params["key"]=key
+    r = requests.get(f"https://api.census.gov/data/{y}/acs/acs1/subject", params=params, timeout=30)
+    return r.status_code != 404
+
+def higher_ed_ba_plus_share():
+    key = _acs_key()
+    now = datetime.utcnow().year
+    latest = None
+    for y in range(now-1, 2009, -1):
+        try:
+            if _year_ok(y, key):
+                latest = y; break
+        except Exception:
+            continue
+    if latest is None:
+        return pd.DataFrame(columns=["state","year","value"])
+
+    years = []
+    y = latest
+    while len(years) < 10 and y >= 2010:
+        if y != 2020:
+            years.append(y)
+        y -= 1
+    years = sorted(years[-10:])
+
+    records = []
+    for yr in years:
+        params = {"get":"NAME,S1501_C02_015E","for":"state:*"}
+        if key: params["key"]=key
+        r = requests.get(f"https://api.census.gov/data/{yr}/acs/acs1/subject", params=params, timeout=60)
+        if r.status_code == 404:
+            continue
+        r.raise_for_status()
+        rows = r.json()
+        hdr = rows[0]; idx_val = hdr.index("S1501_C02_015E"); idx_fips = hdr.index("state")
+        for rec in rows[1:]:
+            fips = rec[idx_fips].zfill(2)
+            if fips in _EXCL or fips not in _STATE_FIPS: continue
+            name = _STATE_FIPS[fips]
+            try: v = float(rec[idx_val])
+            except: v = None
+            records.append((name, int(yr), v))
+        time.sleep(0.08)
+
+    import pandas as pd
+    df = pd.DataFrame(records, columns=["state","year","value"])
+    df = df[df["year"].isin(years)].sort_values(["state","year"]).reset_index(drop=True)
+    return df

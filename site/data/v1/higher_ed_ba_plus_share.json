@@ -1,0 +1,52 @@
+{
+  "metric_id": "higher_ed_ba_plus_share",
+  "title": "Adults 25+ with BA+ (%)",
+  "unit": "percent",
+  "years": [
+    2013,
+    2014,
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2021,
+    2022,
+    2023
+  ],
+  "hawaii": [
+    30.3,
+    30.0,
+    31.4,
+    31.9,
+    32.9,
+    33.5,
+    33.6,
+    35.3,
+    35.4,
+    37.0
+  ],
+  "other_states_avg": [
+    28.532653061224487,
+    28.75714285714286,
+    29.77346938775511,
+    30.46530612244897,
+    31.09183673469388,
+    31.55918367346938,
+    32.13469387755102,
+    34.06938775510204,
+    34.62653061224489,
+    35.11632653061225
+  ],
+  "notes": [
+    "ACS 1-year subject table S1501_C02_015E (Adults 25+ with bachelor\u2019s or higher).",
+    "2020 ACS 1-year (experimental) skipped for comparability.",
+    "If the latest release year is not yet available, the series backfills from earlier years to keep 10 points.",
+    "Comparator is simple average of other 49 states; DC excluded."
+  ],
+  "source": {
+    "name": "Census ACS 1-year S1501",
+    "url": "https://api.census.gov/data/2023/acs/acs1/subject"
+  },
+  "last_updated_utc": "2025-08-28T09:12:14Z"
+}
