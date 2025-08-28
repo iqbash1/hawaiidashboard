@@ -70,3 +70,63 @@
     <script src="assets/main.js"></script>
   </body>
 </html>
+
+  <!-- Higher Education: BA+ (%) card -->
+  <section class="card" id="card-higher_ed_ba_plus_share">
+    <h3>Adults 25+ with BA+ (%)</h3>
+    <p class="card-subtitle">Hawaiʻi vs average of other U.S. states (10-year trend; 2020 skipped)</p>
+    <div class="chart-wrap">
+      <canvas id="chart-higher_ed_ba_plus_share" width="600" height="320"></canvas>
+    </div>
+    <div class="downloads">
+      <a href="data/v1/higher_ed_ba_plus_share.json" download>Download JSON</a> ·
+      <a href="data/v1/csv/higher_ed_ba_plus_share.csv" download>Download CSV</a>
+    </div>
+    <script>
+    (function(){
+      // Ensure Chart.js available (use existing if present, else load CDN once)
+      function ensureChart(cb){
+        if (window.Chart) return cb();
+        if (document.getElementById('chartjs-cdn')) return document.getElementById('chartjs-cdn').addEventListener('load', cb);
+        var s=document.createElement('script'); s.id='chartjs-cdn'; s.src='https://cdn.jsdelivr.net/npm/chart.js'; s.onload=cb; document.head.appendChild(s);
+      }
+      function toFixed1(x){ return (x==null) ? null : Number(x).toFixed(1); }
+      ensureChart(function(){
+        fetch('data/v1/higher_ed_ba_plus_share.json', {cache:'no-cache'})
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            var ctx=document.getElementById('chart-higher_ed_ba_plus_share').getContext('2d');
+            var years=j.years;
+            var hi=j.hawaii;
+            var us=j.other_states_avg;
+            new Chart(ctx, {
+              type:'line',
+              data:{
+                labels: years,
+                datasets:[
+                  {label:'Hawai\u02bbi', data: hi, borderColor:'#1665D8', backgroundColor:'transparent', spanGaps:true, tension:0.2},
+                  {label:'Other states avg', data: us, borderColor:'#9AA4AF', backgroundColor:'transparent', borderDash:[6,4], spanGaps:true, tension:0.2}
+                ]
+              },
+              options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                scales:{
+                  y:{ beginAtZero:false, ticks:{ callback:function(v){ return v.toFixed ? v.toFixed(1)+'%': v+'%'; } } },
+                  x:{ ticks:{ autoSkip:true, maxTicksLimit:10 } }
+                },
+                plugins:{
+                  legend:{ display:true },
+                  tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y; return (c.dataset.label||'')+': '+(v==null?'':toFixed1(v))+'%'; } } },
+                  title:{ display:false }
+                }
+              }
+            });
+          })
+          .catch(function(e){
+            console.error('BA+ chart load error', e);
+          });
+      });
+    })();
+    </script>
+  </section>
