@@ -1,0 +1,51 @@
+{
+  "metric_id": "energy_renewables_share_generation",
+  "title": "Renewables \u2014 share of electricity generation",
+  "unit": "percent",
+  "years": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+  ],
+  "hawaii": [
+    2.294537567387219,
+    2.6718948184860536,
+    2.8504377801025376,
+    2.639948977169505,
+    2.374641067664225,
+    3.177582192562336,
+    3.9080179176718457,
+    3.813403194614979,
+    4.2550325770324315,
+    4.49866975333733
+  ],
+  "other_states_avg": [
+    5.281039605169545,
+    5.634525326734497,
+    6.203791958221586,
+    6.199454941037551,
+    6.397929432457644,
+    6.973034226620186,
+    6.797717259063345,
+    7.029824134934441,
+    7.045192708482796,
+    7.404454963865168
+  ],
+  "notes": [
+    "Utility-scale generation only (EIA sectorid=98); distributed PV excluded.",
+    "Pumped storage generation excluded from denominator.",
+    "Aggregator fuel codes dropped when specific subcodes present."
+  ],
+  "source": {
+    "name": "EIA electric power operational data (v2, annual, utility-scale)",
+    "url": "https://api.eia.gov/v2/electricity/electric-power-operational-data/data/"
+  },
+  "last_updated_utc": "2025-08-28T01:40:40Z"
+}
