@@ -1,0 +1,50 @@
+{
+  "metric_id": "public_health_ypll75_rate_per_100k",
+  "title": "Premature deaths, YPLL<75 (per 100,000)",
+  "unit": "per 100,000",
+  "years": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+  ],
+  "hawaii": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "other_states_avg": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "notes": [
+    "Automated WISQARS export not reachable; place CSV at data/raw/wisqars_ypll75_state.csv and re-run.",
+    "Age-adjusted YPLL before age 75; suppressed values should be null."
+  ],
+  "source": {
+    "name": "CDC WISQARS \u2014 YPLL export (age 75, state)",
+    "url": "https://wisqars.cdc.gov/data-export/ypll_75/state"
+  },
+  "last_updated_utc": "2025-08-29T07:26:24Z"
+}

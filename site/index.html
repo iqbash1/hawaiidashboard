@@ -176,3 +176,55 @@
     })();
     </script>
   </section>
+
+  <!-- Public Health: YPLL<75 (per 100,000) -->
+  <section class="card" id="card-public_health_ypll75_rate_per_100k">
+    <h3>Premature deaths, YPLL&lt;75 (per 100,000)</h3>
+    <p class="card-subtitle">Age-adjusted. Suppressed/unstable values are shown as gaps.</p>
+    <div class="chart-wrap">
+      <canvas id="chart-public_health_ypll75_rate_per_100k" width="600" height="320"></canvas>
+    </div>
+    <div class="downloads">
+      <a href="data/v1/public_health_ypll75_rate_per_100k.json" download>Download JSON</a> ·
+      <a href="data/v1/csv/public_health_ypll75_rate_per_100k.csv" download>Download CSV</a>
+    </div>
+    <script>
+    (function(){
+      function ensureChart(cb){
+        if (window.Chart) return cb();
+        if (document.getElementById('chartjs-cdn')) return document.getElementById('chartjs-cdn').addEventListener('load', cb);
+        var s=document.createElement('script'); s.id='chartjs-cdn'; s.src='https://cdn.jsdelivr.net/npm/chart.js'; s.onload=cb; document.head.appendChild(s);
+      }
+      function fmt0(x){ return (x==null)?null:Number(x).toFixed(0); }
+      ensureChart(function(){
+        fetch('data/v1/public_health_ypll75_rate_per_100k.json', {cache:'no-cache'})
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            var ctx=document.getElementById('chart-public_health_ypll75_rate_per_100k').getContext('2d');
+            new Chart(ctx, {
+              type:'line',
+              data:{
+                labels:j.years,
+                datasets:[
+                  {label:'Hawai\u02bbi', data:j.hawaii, borderColor:'#1665D8', backgroundColor:'transparent', spanGaps:true, tension:0.2},
+                  {label:'Other states avg', data:j.other_states_avg, borderColor:'#9AA4AF', backgroundColor:'transparent', borderDash:[6,4], spanGaps:true, tension:0.2}
+                ]
+              },
+              options:{
+                responsive:true, maintainAspectRatio:false,
+                scales:{
+                  y:{ticks:{callback:function(v){return (v?.toFixed?v.toFixed(0):v);}}},
+                  x:{ticks:{autoSkip:true, maxTicksLimit:10}}
+                },
+                plugins:{
+                  legend:{display:true},
+                  tooltip:{callbacks:{label:function(c){var v=c.parsed.y; return (c.dataset.label||'')+': '+(v==null?'':fmt0(v));}}}
+                }
+              }
+            });
+          })
+          .catch(function(e){ console.error('YPLL chart error', e); });
+      });
+    })();
+    </script>
+  </section>

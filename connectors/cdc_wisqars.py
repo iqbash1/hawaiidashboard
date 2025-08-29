@@ -1,76 +1,77 @@
-import io, re, zipfile
-import requests
-import pandas as pd
-from typing import Optional
+import io, csv, time, requests, pandas as pd
+from pathlib import Path
 
-WISQARS_YPLL_STATE = "https://wisqars.cdc.gov/data-export/ypll_75/state"
-
-def _norm(s: str) -> str:
-    s = re.sub(r"[^\w]+", "_", str(s).strip().lower())
-    return re.sub(r"_+", "_", s).strip("_")
-
-def _pick(df: pd.DataFrame, candidates) -> Optional[str]:
-    cols = {_norm(c): c for c in df.columns}
-    for want in candidates:
-        if want in cols:
-            return cols[want]
-    return None
-
-def _read_wisqars_csv_bytes(b: bytes) -> pd.DataFrame:
-    # ZIP or plain CSV
-    if len(b) >= 2 and b[:2] == b"PK":
-        with zipfile.ZipFile(io.BytesIO(b)) as zf:
-            csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
-            if not csv_names:
-                raise RuntimeError("WISQARS ZIP had no CSV")
-            with zf.open(csv_names[0]) as f:
-                return pd.read_csv(f)
-    return pd.read_csv(io.BytesIO(b))
-
-def fetch_ypll75_rate_by_state(start_year: int, end_year: int) -> pd.DataFrame:
-    """
-    Returns tidy: [state_name, year, value] where value = YPLL under 75 per 100,000.
-    Excludes DC and PR; averages duplicate breakdown rows if present.
-    """
-    r = requests.get(
-        WISQARS_YPLL_STATE,
-        headers={"Accept": "text/csv, application/zip, */*"},
-        timeout=90,
-        allow_redirects=True
-    )
-    r.raise_for_status()
-
-    try:
-        df = _read_wisqars_csv_bytes(r.content)
-    except Exception as e:
-        # some servers might return JSON; try once
+CANDIDATE_URLS = [
+  "https://wisqars.cdc.gov/data-export/ypll_75/state",
+  "https://wisqars.cdc.gov/data-export/ypll/state?ypll_age=75&geography=state",
+  "https://wisqars.cdc.gov/data-export/ypll_75/state?format=csv"
+]
+FALLBACK = Path("data/raw/wisqars_ypll75_state.csv")
+STATE_NAMES = {
+ "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
+ "Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts",
+ "Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey",
+ "New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island",
+ "South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia",
+ "Wisconsin","Wyoming","District of Columbia"
+}
+def _try_remote():
+    hdr={"User-Agent":"Mozilla/5.0","Accept":"text/csv,application/octet-stream,application/json"}
+    for u in CANDIDATE_URLS:
         try:
-            js = r.json()
-            df = pd.DataFrame(js)
+            r = requests.get(u, headers=hdr, timeout=60)
+            if r.status_code==200 and r.content:
+                return r.content.decode("utf-8","replace")
         except Exception:
-            raise RuntimeError(f"Could not parse WISQARS export: {e}")
-
-    state_col = _pick(df, ["state", "location", "state_territory", "state_name", "jurisdiction"])
-    year_col  = _pick(df, ["year", "data_year", "year_code", "year_start"])
-    value_col = _pick(df, [
-        "ypll_rate", "ypll_rate_per_100000", "years_of_potential_life_lost_rate",
-        "years_of_potential_life_lost_ypll_rate", "ypll_under_age_75_rate"
-    ])
-    if not (state_col and year_col and value_col):
-        raise RuntimeError("WISQARS columns not found in export")
-
-    out = df[[state_col, year_col, value_col]].rename(columns={
-        state_col: "state_name", year_col: "year", value_col: "value"
-    })
-    out["year"] = pd.to_numeric(out["year"], errors="coerce").astype("Int64")
-    out["value"] = pd.to_numeric(out["value"], errors="coerce")
-    out = out.dropna(subset=["year"]).astype({"year": int})
-
-    out = out[(out["year"] >= start_year) & (out["year"] <= end_year)]
-    out = out[~out["state_name"].isin(["District of Columbia", "Puerto Rico"])]
-
-    # If multiple rows per state/year (e.g., by race/ethnicity), average them
-    out = (out.groupby(["state_name", "year"], as_index=False)["value"]
-             .mean(numeric_only=True)
-             .sort_values(["state_name", "year"]))
-    return out
+            time.sleep(0.8)
+            continue
+    return None
+def _try_local():
+    return FALLBACK.read_text("utf-8","replace") if FALLBACK.exists() else None
+def _pick_rate_col(headers):
+    keys=[h.strip() for h in headers]; kl=[k.lower() for k in keys]
+    prefs=["age-adjusted ypll rate","age adjusted ypll rate","ypll rate age-adjusted","age-adjusted rate","age adjusted rate","ypll rate","rate"]
+    for p in prefs:
+        for i,h in enumerate(kl):
+            if p in h and "per" in h and "100" in h:
+                return keys[i]
+    for i,h in enumerate(kl):
+        if "rate" in h: return keys[i]
+    return None
+def ypll75_rate_per_100k():
+    text = _try_remote()
+    if text is None:
+        text = _try_local()
+    if text is None:
+        return pd.DataFrame(columns=["state","year","value"])
+    f=io.StringIO(text)
+    rdr=csv.DictReader(f)
+    hdr=rdr.fieldnames or []
+    state_col=next((h for h in hdr if h.lower() in ("state","location","geography")), None)
+    year_col =next((h for h in hdr if h.lower() in ("year","data year","data_year","yearcode")), None)
+    rate_col=_pick_rate_col(hdr)
+    if not (state_col and year_col and rate_col):
+        return pd.DataFrame(columns=["state","year","value"])
+    rows=[]
+    for r in rdr:
+        st=(r.get(state_col) or "").strip()
+        if st not in STATE_NAMES or st=="District of Columbia": continue
+        yraw=(r.get(year_col) or "").strip()
+        y=None
+        for tok in yraw.replace("("," ").replace(")"," ").replace("*"," ").split():
+            if tok.isdigit() and len(tok)==4:
+                y=int(tok); break
+        if y is None: continue
+        vraw=(r.get(rate_col) or "").strip()
+        if vraw in ("","--","**","--*"):
+            v=None
+        else:
+            try: v=float(vraw.replace(",",""))
+            except: v=None
+        rows.append((st,y,v))
+    import pandas as pd
+    df=pd.DataFrame(rows, columns=["state","year","value"])
+    if df.empty: return df
+    years=sorted(df["year"].unique())
+    years10=years[-10:] if len(years)>10 else years
+    return df[df["year"].isin(years10)].sort_values(["state","year"]).reset_index(drop=True)
